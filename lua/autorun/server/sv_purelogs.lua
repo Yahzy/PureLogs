@@ -27,10 +27,8 @@ function purelogs.log(text, color)
 	assert(type(text) == "string", "purelogs.log - 'text' is not a string !")
 	assert(type(color) == "table", "purelogs.log - 'color' is not a table !")
 
-	net.Start("purelogs.send")
-	net.WriteString(text or "")
-	net.WriteColor(color or purelogs.cfg.colors["white"])
-	net.Broadcast()
+	purelogs.list = purelogs.list or {}
+	purelogs.list[#purelogs.list + 1] = {text = text, color = color, time = os.time()}
 
 	local path = "purelogs/" .. os.date("%m_%d_%Y") .. ".txt"
 	local exists = file.Exists(path, "DATA")
@@ -41,7 +39,20 @@ function purelogs.log(text, color)
 end
 
 --[[
+	Hooks
+]]
+
+hook.Add("PlayerButtonDown", "purelogs.menu", function(ply, key)
+	if key ~= purelogs.cfg.key then return end
+	if not ply:IsSuperAdmin() then return end
+
+	net.Start("purelogs.menu")
+	net.WriteTable(purelogs.list)
+	net.Send(ply)
+end)
+
+--[[
 	Networks
 ]]
 
-util.AddNetworkString("purelogs.send")
+util.AddNetworkString("purelogs.menu")

@@ -30,7 +30,7 @@ local nextOpen = 0
 ]]
 
 surface.CreateFont("purelogs-log", {
-	font = "Roboto",
+	font = "Roboto Condensed",
 	size = (ScrH()/1080)*16,
 	weight = 500,
 	antialias = true,
@@ -40,7 +40,7 @@ surface.CreateFont("purelogs-log", {
 	Functions
 ]]
 
-function purelogs.init()
+function purelogs.open(logs)
 	local sw, sh = ScrW(), ScrH()
 	local rw, rh = sw/1920, sh/1080
 
@@ -48,15 +48,7 @@ function purelogs.init()
 	frame:SetSize(rw*1024, rh*600)
 	frame:Center()
 	frame:SetTitle("Purelogs - Console")
-	frame:SetVisible(false)
-	frame.Close = purelogs.hide
-	frame.OnKeyCodePressed = function(_, key)
-		if key ~= purelogs.cfg.key then return end
-		if nextOpen > CurTime() then return end
-
-		purelogs.hide()
-		nextOpen = CurTime() + 0.5
-	end
+	frame:MakePopup()
 
 	local richtext = frame:Add("RichText")
 	richtext:Dock(FILL)
@@ -76,90 +68,62 @@ function purelogs.init()
 	textentry:SetFont("purelogs-log")
 	textentry:SetPlaceholderText("Search")
 	textentry.OnChange = function()
-        local query = textentry:GetValue():lower()
-        purelogs.filter(query)
+		local query = textentry:GetValue():lower()
+		purelogs.filter(richtext, logs, query)
+	end
+
+    local loading = richtext:Add("DPanel")
+    loading:Dock(FILL)
+	loading.progress = 0
+    loading.Paint = function(_, w, h)
+		surface.SetDrawColor(95, 98, 100)
+		surface.DrawRect(0, 0, w, h)
+
+        draw.SimpleText("Chargement des logs...", "purelogs-log", w/2, h/2-30, color_white, 1, 1)
+
+		loading.progress = Lerp(FrameTime()*4, loading.progress, 1)
+
+		surface.SetDrawColor(0, 0, 0, 120)
+		surface.DrawRect(w/2-150, h/2, 300, 24)
+
+		surface.SetDrawColor(255, 200, 40)
+		surface.DrawRect(w/2-150, h/2, 300*loading.progress, 24)
     end
 
-	purelogs.frame = frame
-	purelogs.richtext = richtext
-	purelogs.textentry = textentry
+	for _, log in ipairs(logs) do
+		richtext:InsertColorChange(255, 255, 0, 255)
+		richtext:AppendText("[" .. os.date("%H:%M:%S", log.time) .. "] - ")
+		richtext:InsertColorChange(log.color.r, log.color.g, log.color.b, 255)
+		richtext:AppendText(log.text .. "\n")
+	end
+
+	timer.Simple(1, function()
+		if IsValid(richtext) then richtext:GotoTextEnd() end
+		if IsValid(loading) then loading:Remove() end
+	end)
 end
 
-function purelogs.show()
-	purelogs.frame:SetVisible(true)
-	purelogs.frame:MoveToFront()
-	purelogs.frame:MakePopup()
-end
+function purelogs.filter(richtext, logs, query)
+    richtext:SetText("")
 
-function purelogs.hide()
-	purelogs.frame:SetVisible(false)
-	purelogs.frame:MoveToBack()
-end
-
-function purelogs.filter(query)
-    if not IsValid(purelogs.richtext) then return end
-
-    purelogs.richtext:SetText("")
-
-    for _, log in ipairs(purelogs.list) do
-        local text = log.text
-        local color = log.color
-        local time = log.time
-
-        if query == "" or string.find(text:lower(), query, 1, true) then
-            purelogs.richtext:InsertColorChange(255, 255, 0, 255)
-            purelogs.richtext:AppendText("[" .. os.date("%H:%M:%S", time) .. "] - ")
-            purelogs.richtext:InsertColorChange(color.r, color.g, color.b, 255)
-            purelogs.richtext:AppendText(text .. "\n")
+    for _, log in ipairs(logs) do
+        if query == "" or string.find(log.text:lower(), query, 1, true) then
+            richtext:InsertColorChange(255, 255, 0, 255)
+            richtext:AppendText("[" .. os.date("%H:%M:%S", log.time) .. "] - ")
+            richtext:InsertColorChange(log.color.r, log.color.g, log.color.b, 255)
+            richtext:AppendText(log.text .. "\n")
+			richtext:GotoTextEnd()
         end
     end
 end
-
-function purelogs.add(text, color)
-	if not IsValid(purelogs.frame) then purelogs.init() end
-	if not IsValid(purelogs.richtext) then return end
-
-	color = color or purelogs.cfg.colors["white"]
-
-	local log = {text = text, color = color, time = os.time()}
-    table.insert(purelogs.list, log)
-
-	local query = IsValid(purelogs.textentry) and purelogs.textentry:GetValue():lower() or ""
-    if query ~= "" then purelogs.filter(query) return end
-
-	purelogs.richtext:InsertColorChange(255, 255, 0, 255)
-	purelogs.richtext:AppendText("[" .. os.date("%H:%M:%S", os.time()) .. "] - ")
-	purelogs.richtext:InsertColorChange(color.r, color.g, color.b, 255)
-	purelogs.richtext:AppendText(text .. "\n")
-end
-
---[[
-	Hooks
-]]
-
-hook.Add("InitPostEntity", "purelogs.menu", purelogs.init)
-
-hook.Add("PlayerButtonDown", "purelogs.menu", function(ply, key)
-	if key ~= purelogs.cfg.key then return end
-	if nextOpen > CurTime() then return end
-
-	if ply ~= LocalPlayer() or not ply:IsSuperAdmin() then return end
-	if vgui.CursorVisible() or gui.IsConsoleVisible() then return end
-
-	if not IsValid(purelogs.frame) then purelogs.init() end
-	if purelogs.frame:IsVisible() then purelogs.hide() else purelogs.show() end
-
-	nextOpen = CurTime() + 0.5
-end)
 
 --[[
 	Networks
 ]]
 
-net.Receive("purelogs.send", function()
-	local text = net.ReadString()
-	local color = net.ReadColor()
+net.Receive("purelogs.menu", function()
+	local logs = net.ReadTable()
+	if not istable(logs) then return end
 
-	purelogs.add(text, color)
-	hook.Call("PurelogsAdd", GAMEMODE, text, color)
+	purelogs.open(logs)
 end)

@@ -95,3 +95,11 @@ hook.Add("PlayerSay", "purelogs.sandbox", function(ply, text)
 	if string.sub(text, 1, 1) ~= "!" then return end
 	purelogs.log(string.format("%s (%s) used command: %s", ply:Name(), ply:SteamID(), text), Color(255, 100, 255))
 end)
+
+
+concommand.Add("gmod_admin_cleanup", function(ply, cmd, args)
+	cleanup.CC_AdminCleanup(ply, cmd, args)
+
+	if not IsValid(ply) or not ply:IsPlayer() then return end
+	purelogs.log(string.format("%s (%s) used admin cleanup", ply:Name(), ply:SteamID()), Color(100, 255, 255))
+end, nil, "", {FCVAR_DONTRECORD})
